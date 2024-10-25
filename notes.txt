@@ -1,0 +1,165 @@
+Normalize function thats not used in bloch_animation.py
+
+# Normalize M_at_t values to the range [-2, 2]
+def normalize(array, new_min=-2, new_max=2):
+    min_val = np.min(array)
+    max_val = np.max(array)
+    normalized_array = (array - min_val) / (max_val - min_val) * (new_max - new_min) + new_min
+    return normalized_array
+
+M_at_t_norm = normalize(M_at_t)
+
+#print(M_at_t_norm)
+
+-----------------------------------------
+
+Unchanged draft:
+
+import numpy as np
+from numpy import linalg as LA
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.animation import FuncAnimation
+
+# ---------------------- Calculate time evolution ------------------
+
+def compute_M_trajectory(molecular_parameters, B_eff, M_initial):
+    # Biological parameters
+    T1, T2, gamma = molecular_parameters
+
+    # B_eff unpacked to x,y,z components
+    Bx, By, Bz = B_eff
+
+    # The magnetic moment's current position
+    Mx, My, Mz = M_initial
+
+    A = np.array([[-1/T2, gamma*Bz, -gamma*By], 
+                [-gamma*Bz, -1/T2, gamma*Bz], 
+                [gamma*By, -gamma*Bx, -1/T1]])
+
+
+
+    eigenvalues, eigenvectors = LA.eig(A)
+    M0 = np.array([Mx, My, Mz])
+    C = LA.solve(eigenvectors.T, M0)
+
+    # Compute M0 from eigenvectors and C
+    a = C[0] * eigenvectors[0]
+    b = C[1] * eigenvectors[1]
+    c = C[2] * eigenvectors[2]
+
+    # Verify the reconstructed initial M0
+    arr = np.array(a + b + c).real.astype(float)
+    print(arr)
+    print(M_initial)
+    #print("eigenvalues: ", eigenvalues)
+
+    # normalize eigenvectors
+    eigenvectors[:, 0] = eigenvectors[:, 0] / np.linalg.norm(eigenvectors[:, 0])
+    eigenvectors[:, 1] = eigenvectors[:, 1] / np.linalg.norm(eigenvectors[:, 1])
+    eigenvectors[:, 2] = np.array([0, 0, 1])
+
+    # Iterate over the eigenvector list
+    M_at_t = np.zeros((len(time), 3), dtype=float)
+
+    for idx, t in enumerate(time):
+        M_t = np.zeros(3, dtype=complex)  # Initialize the solution vector M(t)
+        for i in range(3):
+            exp_term = np.exp(eigenvalues[i] * t)
+            #print("exp term: ", exp_term)
+            M_t += C[i] * exp_term * eigenvectors[:, i]
+            #print("M_t: ", M_t)
+        
+        #print(f"{t:.3f}s: [{M_t[0]:.4g}, {M_t[1]:.4g}, {M_t[2]:.4g}]")
+        M_at_t[idx] = np.real(M_t)
+    
+    return M_at_t
+
+# --------------- Parameters -----------------------
+
+# MRI
+B0 = [0,0,1]
+molecular_paramaters = [0.8,0.1,42000000]
+gamma = molecular_paramaters[2]
+
+## RF, Lab frame B_RF = B1*cos(w_rf*t)*x_hat - B1*sin(w_rf*t)*y_hat
+
+## On-resonance B_eff = [B1,0, B0 - w_0/gamma] = [B1,0,B0 - gamma*B0/gamma] = [B1,0,0]
+## In order for full precession around B1 strictly, a transition time is needed to fully transition. A 90 degree transition takes tau = pi/2*gamma*B1
+# w_0 = gamma*B0
+# w_1 = gamma*B1
+# Flip-angle: alpha = w_1*tau = gamma*B1*tau
+
+w_rf = gamma * B0
+f_fict = w_rf/gamma
+
+B1 = 10e-06
+w_1 = gamma*B1
+tau = np.pi/2*gamma*B1  # RF Pulse Duration for 90deg flip angle
+alpha = w_1 * tau
+
+# Effective B-field
+B_eff = [0,0,B0-f_fict]
+
+M_initial = [1.,0.01,0.01]
+
+time=np.linspace(0,0.8,5000)
+
+M_at_t = compute_M_trajectory(molecular_paramaters,B_eff,M_initial)
+
+
+# ----------------- Animate ----------------------
+
+def get_arrow(frame):
+    x,y,z = 0,0,0
+    u,v,w = M_at_t[frame]
+
+    # Add if-conditional where the range t0->t1 is thermal equilibrium 
+    # Then t1-te is the excitation time
+    # Then te->tr is the relaxation time
+
+    return x,y,z,u,v,w
+
+# Update function for animation
+def update(frame):
+    global quiver, trail_x, trail_y, trail_z
+
+    # Get new arrow coordinates
+    x, y, z, u, v, w = get_arrow(frame)
+    
+    # Remove the old arrow
+    quiver.remove()
+
+    # Create a new arrow at the current position
+    quiver = ax.quiver(x, y, z, u, v, w, color='b')
+
+    # Append the new arrow head coordinates to the trail
+    trail_x.append(x + u)
+    trail_y.append(y + v)
+    trail_z.append(z + w)
+
+    # Plot the trail (previous arrow head positions)
+    ax.plot(trail_x, trail_y, trail_z, color='r')
+
+
+if __name__=="__main__":
+
+    fig, ax = plt.subplots(subplot_kw=dict(projection="3d"))
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-2, 2)
+    ax.set_zlim(-2, 2) 
+
+    # Lists to store the arrow head coordinates (for the trail)
+    trail_x, trail_y, trail_z = [], [], []
+    quiver = ax.quiver(*get_arrow(0))
+    B0 = ax.quiver(0,0,0,0,0,-4,color='g')
+
+    # The update argument takes elements of frame as argument, then plots
+    ani = FuncAnimation(fig, update, len(time), interval=100)
+    plt.show()
+
+    ## Plot x,y,z values individually
+    # plt.show()
+    # plt.plot(time, M_at_t[:,1])
+    
