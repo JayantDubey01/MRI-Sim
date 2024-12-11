@@ -46,18 +46,17 @@ def ift(coeffs,shape):
         K = coeffs.shape[0]
         flag = 1
     
-    
-    exponent = 1j * 2 * np.pi
-    
+        
     # 2D IFT
     if flag==2:
         print("Detected 2D dataset, performing 2D IFT")
+        exponent = 1j * 2 * np.pi
         signal = np.zeros((N,M),dtype=complex)
         for x in range(N):
             for y in range(M):
                 for k in range(K):
                     for l in range(L):
-                        signal[x,y] += coeffs[k,l]*np.exp(exponent * ((k*x)/N + (l*y)/M))
+                        signal[x,y] += coeffs[k,l]*np.exp(exponent * (((k/K)*x) + ((l/L)*y)))
         
         return np.real(signal) * 1/(K * L)
     
@@ -212,19 +211,19 @@ def acquire_signal(data):
     N, M = data.shape
     #data = apply_1D_intensity_gradient(data,grad=15,freq=15)
 
-    # k space range is [-N/2, N/2] so there is a total of N points, spaced out with an interval of 1 
+    # k space range is [-N/2, N/2] so there is a total of N points
     Gx = int(N/2)
     Gy = int(M/2)
 
-    # Number of points is always the height x width of image because...
-    gradient_trajectory_x = np.linspace(Gx,-Gx,N)
-    gradient_trajectory_y = np.linspace(Gy,-Gy,M)
+    # Bandwidth of signal 
+    bandwidth_x = np.linspace(-Gx, Gx,N)
+    bandwidth_y = np.linspace(-Gy, Gy,M)
 
     kspace = np.zeros((N, M),dtype=complex)
 
     # Apply gradient on image in x, y direction then sum the whole image and store the complex signal as a k-space coefficient
-    for k,grad_y in enumerate(gradient_trajectory_y):
-        for l,grad_x in enumerate(gradient_trajectory_x):
+    for k,grad_y in enumerate(bandwidth_y):
+        for l,grad_x in enumerate(bandwidth_x):
 
             # Apply gradient, 
             complex_y_data = apply_y_gradient(data,grad=grad_y,period=1)
@@ -250,7 +249,7 @@ if __name__=="__main__":
     # Compute DFT from raw signal
     #dft = dft(data,data.shape[0],data.shape[1])
 
-    #recon_signal = ift(kspace,complex_data.shape)
+    #recon_signal = ift(kspace,kspace.shape)
     recon_signal = np.fft.ifft2(kspace)
     recon_signal = np.abs(recon_signal)
 
